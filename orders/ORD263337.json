@@ -1,0 +1,22 @@
+{
+    "id": "ORD263337",
+    "time": "2025-12-26 21:56:40.108699",
+    "cart": [
+        {
+            "name": "Water Bottle",
+            "price": 20,
+            "qty": 1
+        },
+        {
+            "name": "Veg Biryani",
+            "price": 220,
+            "qty": 1
+        }
+    ],
+    "total": 240,
+    "payment": "Cash",
+    "type": "Dine In",
+    "name": "aashish",
+    "location": "1",
+    "phone": "1234567891"
+}
