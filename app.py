@@ -149,11 +149,11 @@ def whatsapp():
     # -------------------------
     if session["state"] == "quantity":
         cart_item = session["cart"][-1]
-        if body == "add1" or body == "➕ +1":
+        if body in ["add1", "➕ +1"]:
             cart_item["qty"] += 1
-        elif body == "add2" or body == "➕ +2":
+        elif body in ["add2", "➕ +2"]:
             cart_item["qty"] += 2
-        elif body == "done" or body == "✅ done":
+        elif body in ["done", "✅ done"]:
             send_buttons(resp, "Item added to cart 🛒\nWhat next?", [
                 {"id": "menu", "title": "➕ Add More"},
                 {"id": "cart", "title": "🛒 View Cart"},
@@ -191,6 +191,9 @@ def whatsapp():
             session["state"] = "payment"
             return str(resp)
         elif body in ["remove_item", "❌ remove item"]:
+            if not session["cart"]:
+                resp.message("Your cart is empty.")
+                return str(resp)
             rows = [{"id": str(i), "title": f"{c['name']} x{c['qty']}"} for i, c in enumerate(session["cart"])]
             send_list(resp, "Select item to remove:", [{"title": "Cart Items", "rows": rows}])
             session["state"] = "remove_item"

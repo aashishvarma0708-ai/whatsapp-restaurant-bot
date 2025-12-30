@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Order {{ order.order_id }}</title>
+</head>
+<body>
+
+<h2>🧾 Order {{ order.order_id }}</h2>
+
+<p>
+    <strong>Name:</strong> {{ order.customer_name }} <br>
+    <strong>Phone:</strong> {{ order.phone }} <br>
+    <strong>Type:</strong> {{ order.order_type }} <br>
+    <strong>Payment:</strong> {{ order.payment }}
+</p>
+
+<h3>Items</h3>
+<ul>
+    {% for item in order.items %}
+        <li>{{ item.name }} × {{ item.qty }} — ₹{{ item.price }}</li>
+    {% endfor %}
+</ul>
+
+<h3>Total: ₹{{ order.total }}</h3>
+
+<a href="/admin?key=restaurant123">⬅ Back</a>
+
+</body>
+</html>
+

@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Restaurant Admin Dashboard</title>
+    <style>
+        body { font-family: Arial; padding: 20px; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { border: 1px solid #ccc; padding: 8px; }
+        th { background: #f4f4f4; }
+        a { text-decoration: none; color: blue; }
+    </style>
+</head>
+<body>
+
+<h1>📊 Admin Dashboard</h1>
+
+<p>
+    <strong>Orders Today:</strong> {{ today_count }} <br>
+    <strong>Revenue Today:</strong> ₹{{ today_total }}
+</p>
+
+<table>
+    <tr>
+        <th>Order ID</th>
+        <th>Time</th>
+        <th>Name</th>
+        <th>Total</th>
+        <th>Payment</th>
+        <th>Status</th>
+    </tr>
+
+    {% for order in orders %}
+    <tr>
+        <td>
+            <a href="/admin/order/{{ order.order_id }}?key=restaurant123">
+                {{ order.order_id }}
+            </a>
+        </td>
+        <td>{{ order.time }}</td>
+        <td>{{ order.customer_name }}</td>
+        <td>₹{{ order.total }}</td>
+        <td>{{ order.payment }}</td>
+        <td>{{ order.status }}</td>
+    </tr>
+    {% endfor %}
+</table>
+
+</body>
+</html>
+
