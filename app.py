@@ -1,3 +1,4 @@
+# app.py
 from flask import Flask, request, render_template
 from twilio.twiml.messaging_response import MessagingResponse
 import os, json, time
@@ -31,12 +32,17 @@ MENU = {
 }
 
 # -----------------------------
-# Helper functions
+# Utility functions
 # -----------------------------
 def get_session(user):
     if user not in sessions:
-        sessions[user] = {"cart": [], "state": "welcome", "last_item": None}
+        sessions[user] = {
+            "cart": [],
+            "state": "welcome",
+            "last_item": None
+        }
     return sessions[user]
+
 
 def save_order(order):
     os.makedirs("orders", exist_ok=True)
@@ -44,197 +50,223 @@ def save_order(order):
     with open(f"orders/{order['id']}.json", "w") as f:
         json.dump(order, f, indent=4)
 
+# -----------------------------
+# Button & List helpers
+# -----------------------------
 def send_buttons(resp, body, buttons):
-    msg = resp.message(body=body)
-    msg._message.append({
+    """
+    Send button style interactive message.
+    buttons: list of dicts {"id": "menu", "title": "Menu"}
+    """
+    msg = resp.message()
+    msg.body(body)
+    msg.content_type = 'application/json'
+    msg.body = {
         "type": "interactive",
         "interactive": {
             "type": "button",
             "body": {"text": body},
-            "action": {"buttons": [{"type": "reply", "reply": {"id": b["id"], "title": b["title"]}} for b in buttons]}
+            "action": {
+                "buttons": [
+                    {"type": "reply", "reply": {"id": b["id"], "title": b["title"]}} 
+                    for b in buttons
+                ]
+            }
         }
-    })
+    }
+
 
 def send_list(resp, body, sections):
-    msg = resp.message(body=body)
-    msg._message.append({
+    """
+    Send list style interactive message.
+    sections: [{"title": "Menu", "rows": [{"id": "starters","title":"Starters"}]}]
+    """
+    msg = resp.message()
+    msg.body(body)
+    msg.content_type = 'application/json'
+    msg.body = {
         "type": "interactive",
-        "interactive": {"type": "list", "body": {"text": body}, "action": {"button": "View Menu", "sections": sections}}
-    })
+        "interactive": {
+            "type": "list",
+            "body": {"text": body},
+            "action": {
+                "button": "View Menu",
+                "sections": sections
+            }
+        }
+    }
 
 # -----------------------------
-# WhatsApp webhook
+# WhatsApp Webhook
 # -----------------------------
 @app.route("/whatsapp", methods=["POST"])
 def whatsapp():
-    user = request.form.get("From")
-    body = request.form.get("Body", "").strip().lower()
+    incoming = request.form.get("Body", "").strip().lower()
+    user = request.form.get("From", "")
     session = get_session(user)
     resp = MessagingResponse()
 
     # -------------------------
-    # WELCOME
+    # Welcome message
     # -------------------------
-    if session["state"] == "welcome":
-        send_buttons(resp, "👋 Welcome to Our Restaurant!\nHow can we help you?", [
-            {"id": "menu", "title": "📋 Menu"},
-            {"id": "reserve", "title": "🍽 Reserve Table"},
-            {"id": "cart", "title": "🛒 Cart"}
-        ])
-        session["state"] = "home"
+    if incoming in ["hi", "hello", "hey"]:
+        send_buttons(
+            resp,
+            "👋 Welcome to Our Restaurant\nHow can I help you?",
+            [
+                {"id": "menu", "title": "📋 Menu"},
+                {"id": "reserve", "title": "🍽 Reserve Table"},
+                {"id": "cart", "title": "🛒 Cart"}
+            ]
+        )
         return str(resp)
 
     # -------------------------
-    # HOME BUTTONS
+    # Menu categories
     # -------------------------
-    if body in ["menu", "📋 menu"]:
-        send_list(resp, "📋 Select a category", [
-            {"title": "Menu", "rows": [
-                {"id": "starters", "title": "🥗 Starters"},
-                {"id": "main_course", "title": "🍛 Main Course"},
-                {"id": "desserts", "title": "🍰 Desserts"},
-                {"id": "drinks", "title": "🥤 Soft Drinks"}
-            ]}
-        ])
+    if incoming == "menu":
+        send_list(
+            resp,
+            "📋 Select a category",
+            [
+                {
+                    "title": "Menu",
+                    "rows": [
+                        {"id": "starters", "title": "🥗 Starters"},
+                        {"id": "main_course", "title": "🍛 Main Course"},
+                        {"id": "desserts", "title": "🍰 Desserts"},
+                        {"id": "drinks", "title": "🥤 Soft Drinks"}
+                    ]
+                }
+            ]
+        )
         session["state"] = "category"
         return str(resp)
 
-    if body in ["cart", "🛒 cart"]:
-        if not session["cart"]:
-            resp.message("🛒 Your cart is empty")
-            return str(resp)
-        else:
-            text = "🛒 Your Cart:\n"
-            total = 0
-            for c in session["cart"]:
-                text += f"- {c['name']} x{c['qty']}\n"
-                total += c["price"] * c["qty"]
-            text += f"\nTotal: ₹{total}"
-            send_buttons(resp, text, [
-                {"id": "menu", "title": "➕ Add More"},
-                {"id": "remove_item", "title": "❌ Remove Item"},
-                {"id": "checkout", "title": "✅ Checkout"}
-            ])
-            session["state"] = "cart_action"
-            return str(resp)
-
     # -------------------------
-    # CATEGORY → ITEMS
+    # Show items in category
     # -------------------------
-    if body in MENU:
-        rows = [{"id": item["id"], "title": f"{item['name']} ₹{item['price']}"} for item in MENU[body]]
-        send_list(resp, "Select an item", [{"title": body.title(), "rows": rows}])
+    if incoming in MENU:
+        rows = [{"id": item["id"], "title": f"{item['name']} ₹{item['price']}"} for item in MENU[incoming]]
+        send_list(
+            resp,
+            f"Select an item from {incoming.title()}",
+            [{"title": incoming.title(), "rows": rows}]
+        )
         session["state"] = "item"
-        session["category"] = body
+        session["category"] = incoming
         return str(resp)
 
     # -------------------------
-    # ITEM SELECTED
+    # Add item to cart
     # -------------------------
     for cat in MENU:
         for item in MENU[cat]:
-            if body == item["id"]:
+            if incoming == item["id"]:
                 session["last_item"] = item
+                # Add item with qty 1 initially
                 session["cart"].append({"name": item["name"], "qty": 1, "price": item["price"]})
-                send_buttons(resp, f"✅ {item['name']} added to cart. Choose quantity:", [
-                    {"id": "add1", "title": "➕ +1"},
-                    {"id": "add2", "title": "➕ +2"},
-                    {"id": "done", "title": "✅ Done"}
-                ])
+                send_buttons(
+                    resp,
+                    f"✅ {item['name']} added to cart. Choose quantity:",
+                    [
+                        {"id": "qty1", "title": "+1"},
+                        {"id": "qty2", "title": "+2"},
+                        {"id": "done_qty", "title": "✅ Done"}
+                    ]
+                )
                 session["state"] = "quantity"
                 return str(resp)
 
     # -------------------------
-    # QUANTITY HANDLING
+    # Quantity handling
     # -------------------------
-    if session["state"] == "quantity":
+    if session.get("state") == "quantity":
         cart_item = session["cart"][-1]
-        if body in ["add1", "➕ +1"]:
+        if incoming == "qty1":
             cart_item["qty"] += 1
-        elif body in ["add2", "➕ +2"]:
+        elif incoming == "qty2":
             cart_item["qty"] += 2
-        elif body in ["done", "✅ done"]:
-            send_buttons(resp, "Item added to cart 🛒\nWhat next?", [
-                {"id": "menu", "title": "➕ Add More"},
-                {"id": "cart", "title": "🛒 View Cart"},
-                {"id": "checkout", "title": "✅ Checkout"}
-            ])
+        elif incoming == "done_qty":
+            send_buttons(
+                resp,
+                "Item added to cart 🛒 What next?",
+                [
+                    {"id": "menu", "title": "➕ Add More"},
+                    {"id": "cart", "title": "🛒 View Cart"},
+                    {"id": "checkout", "title": "✅ Checkout"}
+                ]
+            )
             session["state"] = "cart_action"
             return str(resp)
-        send_buttons(resp, f"{cart_item['name']} qty: {cart_item['qty']}", [
-            {"id": "add1", "title": "➕ +1"},
-            {"id": "add2", "title": "➕ +2"},
-            {"id": "done", "title": "✅ Done"}
-        ])
+
+        send_buttons(
+            resp,
+            f"{cart_item['name']} qty: {cart_item['qty']}",
+            [
+                {"id": "qty1", "title": "+1"},
+                {"id": "qty2", "title": "+2"},
+                {"id": "done_qty", "title": "✅ Done"}
+            ]
+        )
         return str(resp)
 
     # -------------------------
-    # CART ACTIONS
+    # View cart / Checkout
     # -------------------------
-    if session["state"] == "cart_action":
-        if body in ["menu", "➕ add more"]:
-            session["state"] = "category"
-            send_list(resp, "📋 Select a category", [
-                {"title": "Menu", "rows": [
-                    {"id": "starters", "title": "🥗 Starters"},
-                    {"id": "main_course", "title": "🍛 Main Course"},
-                    {"id": "desserts", "title": "🍰 Desserts"},
-                    {"id": "drinks", "title": "🥤 Soft Drinks"}
-                ]}
-            ])
-            return str(resp)
-        elif body in ["checkout", "✅ checkout"]:
-            send_buttons(resp, "Choose payment method:", [
+    if incoming == "cart":
+        text = "🛒 Your Cart:\n"
+        total = 0
+        for c in session["cart"]:
+            text += f"- {c['name']} x{c['qty']}\n"
+            total += c["price"] * c["qty"]
+        text += f"\nTotal: ₹{total}"
+        send_buttons(
+            resp,
+            text,
+            [
+                {"id": "menu", "title": "➕ Add More"},
+                {"id": "checkout", "title": "✅ Checkout"}
+            ]
+        )
+        session["state"] = "cart_view"
+        return str(resp)
+
+    if incoming == "checkout":
+        send_buttons(
+            resp,
+            "Choose payment method",
+            [
                 {"id": "upi", "title": "💳 UPI"},
                 {"id": "cash", "title": "💵 Cash at Counter"}
-            ])
-            session["state"] = "payment"
-            return str(resp)
-        elif body in ["remove_item", "❌ remove item"]:
-            if not session["cart"]:
-                resp.message("Your cart is empty.")
-                return str(resp)
-            rows = [{"id": str(i), "title": f"{c['name']} x{c['qty']}"} for i, c in enumerate(session["cart"])]
-            send_list(resp, "Select item to remove:", [{"title": "Cart Items", "rows": rows}])
-            session["state"] = "remove_item"
-            return str(resp)
-
-    # -------------------------
-    # REMOVE ITEM
-    # -------------------------
-    if session["state"] == "remove_item":
-        try:
-            index = int(body)
-            removed = session["cart"].pop(index)
-            send_buttons(resp, f"❌ {removed['name']} removed from cart", [
-                {"id": "menu", "title": "➕ Add More"},
-                {"id": "cart", "title": "🛒 View Cart"},
-                {"id": "checkout", "title": "✅ Checkout"}
-            ])
-            session["state"] = "cart_action"
-        except:
-            resp.message("Invalid selection. Please choose an item from the list.")
+            ]
+        )
+        session["state"] = "payment"
         return str(resp)
 
     # -------------------------
-    # PAYMENT
+    # Payment handling
     # -------------------------
-    if session["state"] == "payment":
-        if body in ["upi", "💳 upi", "cash", "💵 cash"]:
-            order = {"customer": {"phone": user}, "cart": session["cart"], "payment": body, "status": "Confirmed"}
-            save_order(order)
-            resp.message("🎉 Order Confirmed!\nYour food is being prepared 🍳")
-            session.clear()
-            return str(resp)
+    if session.get("state") == "payment":
+        order = {
+            "customer": {"phone": user},
+            "cart": session["cart"],
+            "payment": incoming,
+            "status": "Confirmed"
+        }
+        save_order(order)
+        resp.message("🎉 Order Confirmed!\nYour food is being prepared 🍳")
+        session.clear()
+        return str(resp)
 
     # -------------------------
-    # FALLBACK
+    # Fallback
     # -------------------------
-    resp.message("Please choose an option using the buttons above 👆")
+    resp.message("Please use the buttons above 👆")
     return str(resp)
 
 # -----------------------------
-# ADMIN DASHBOARD
+# Admin Dashboard
 # -----------------------------
 @app.route("/admin")
 def admin():
@@ -245,8 +277,9 @@ def admin():
     orders = []
     if os.path.exists("orders"):
         for f in os.listdir("orders"):
-            with open(f"orders/{f}") as file:
-                orders.append(json.load(file))
+            if f.endswith(".json"):
+                with open(f"orders/" + f) as file:
+                    orders.append(json.load(file))
 
     return render_template("admin.html", orders=orders)
 
