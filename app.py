@@ -1,4 +1,4 @@
-~# app.py
+
 from flask import Flask, request, render_template
 from twilio.twiml.messaging_response import MessagingResponse
 import os, json, time
